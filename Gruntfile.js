@@ -1,19 +1,31 @@
 var semver = require('semver'),
     f = require('util').format,
-    jsFiles = [
-      'src/version.js',
-      'src/utils.js',
-      'src/event_target.js',
-      'src/event_bus.js',
-      'src/persistent_storage.js',
-      'src/request_cache.js',
-      'src/transport.js',
-      'src/dataset.js',
-      'src/input_view.js',
-      'src/dropdown_view.js',
-      'src/typeahead_view.js',
-      'src/typeahead.js'
-    ];
+    files = {
+      common: [
+      'src/common/utils.js'
+      ],
+      bloodhound: [
+      'src/bloodhound/version.js',
+      'src/bloodhound/lru_cache.js',
+      'src/bloodhound/persistent_storage.js',
+      'src/bloodhound/transport.js',
+      'src/bloodhound/search_index.js',
+      'src/bloodhound/options_parser.js',
+      'src/bloodhound/bloodhound.js'
+      ],
+      typeahead: [
+      'src/typeahead/html.js',
+      'src/typeahead/css.js',
+      'src/typeahead/event_bus.js',
+      'src/typeahead/event_emitter.js',
+      'src/typeahead/highlight.js',
+      'src/typeahead/input.js',
+      'src/typeahead/dataset.js',
+      'src/typeahead/dropdown.js',
+      'src/typeahead/typeahead.js',
+      'src/typeahead/plugin.js'
+      ]
+    };
 
 module.exports = function(grunt) {
   grunt.initConfig({
@@ -24,7 +36,7 @@ module.exports = function(grunt) {
     banner: [
       '/*!',
       ' * typeahead.js <%= version %>',
-      ' * https://github.com/twitter/typeahead',
+      ' * https://github.com/twitter/typeahead.js',
       ' * Copyright 2013 Twitter, Inc. and other contributors; Licensed MIT',
       ' */\n\n'
     ].join('\n'),
@@ -34,22 +46,42 @@ module.exports = function(grunt) {
         banner: '<%= banner %>',
         enclose: { 'window.jQuery': '$' }
       },
-      js: {
+      bloodhound: {
         options: {
           mangle: false,
           beautify: true,
           compress: false
         },
-        src: jsFiles,
-        dest: '<%= buildDir %>/typeahead.js'
+        src: files.common.concat(files.bloodhound),
+        dest: '<%= buildDir %>/bloodhound.js'
       },
-      jsmin: {
+      typeahead: {
+        options: {
+          mangle: false,
+          beautify: true,
+          compress: false
+        },
+        src: files.common.concat(files.typeahead),
+        dest: '<%= buildDir %>/typeahead.jquery.js'
+
+      },
+      bundle: {
+        options: {
+          mangle: false,
+          beautify: true,
+          compress: false
+        },
+        src: files.common.concat(files.bloodhound, files.typeahead),
+        dest: '<%= buildDir %>/typeahead.bundle.js'
+
+      },
+      bundlemin: {
         options: {
           mangle: true,
           compress: true
         },
-        src: jsFiles,
-        dest: '<%= buildDir %>/typeahead.min.js'
+        src: files.common.concat(files.bloodhound, files.typeahead),
+        dest: '<%= buildDir %>/typeahead.bundle.min.js'
       }
     },
 
@@ -57,7 +89,8 @@ module.exports = function(grunt) {
       version: {
         pattern: '%VERSION%',
         replacement: '<%= version %>',
-        path: ['<%= uglify.js.dest %>', '<%= uglify.jsmin.dest %>']
+        recursive: true,
+        path: '<%= buildDir %>'
       }
     },
 
@@ -65,33 +98,19 @@ module.exports = function(grunt) {
       options: {
         jshintrc: '.jshintrc'
       },
-      src: jsFiles,
-      tests: ['test/*.js'],
+      src: 'src/**/*.js',
+      test: ['test/*_spec.js'],
       gruntfile: ['Gruntfile.js']
     },
 
     watch: {
       js: {
-        files: jsFiles,
-        tasks: 'build:js'
-      }
-    },
-
-    jasmine: {
-      js: {
-        src: jsFiles,
-        options: {
-          specs: 'test/*_spec.js',
-          helpers: 'test/helpers/*',
-          vendor: 'test/vendor/*'
-        }
+        files: 'src/**/*',
+        tasks: 'build'
       }
     },
 
     exec: {
-      open_spec_runner: {
-        cmd: 'open _SpecRunner.html'
-      },
       git_is_clean: {
         cmd: 'test -z "$(git status --porcelain)"'
       },
@@ -122,7 +141,7 @@ module.exports = function(grunt) {
           'sed -E -i "" \'s/v[0-9]+\\.[0-9]+\\.[0-9]+/v<%= version %>/\' index.html',
           'git add index.html',
           'git commit -m "Add assets for <%= version %>."',
-          'git push',
+          //'git push',
           'git checkout -',
           'rm -rf typeahead.js'
         ].join(' && ')
@@ -163,14 +182,12 @@ module.exports = function(grunt) {
     grunt.task.run([
       'exec:git_on_master',
       'exec:git_is_clean',
-      'lint',
-      'test',
       'manifests:' + version,
       'build',
       'exec:git_add',
       'exec:git_commit:' + version,
       'exec:git_tag:' + version,
-      'exec:git_push',
+      //'exec:git_push',
       'exec:publish_assets'
     ]);
   });
@@ -178,10 +195,10 @@ module.exports = function(grunt) {
   grunt.registerTask('manifests', 'Update manifests.', function(version) {
     var _ = grunt.util._,
         pkg = grunt.file.readJSON('package.json'),
-        component = grunt.file.readJSON('component.json'),
+        bower = grunt.file.readJSON('bower.json'),
         jqueryPlugin = grunt.file.readJSON('typeahead.js.jquery.json');
 
-    component = JSON.stringify(_.extend(component, {
+    bower = JSON.stringify(_.extend(bower, {
       name: pkg.name,
       version: version
     }), null, 2);
@@ -203,7 +220,7 @@ module.exports = function(grunt) {
     }), null, 2);
 
     grunt.file.write('package.json', pkg);
-    grunt.file.write('component.json', component);
+    grunt.file.write('bower.json', bower);
     grunt.file.write('typeahead.js.jquery.json', jqueryPlugin);
   });
 
@@ -214,8 +231,6 @@ module.exports = function(grunt) {
   grunt.registerTask('build', ['uglify', 'sed:version']);
   grunt.registerTask('server', 'connect:server');
   grunt.registerTask('lint', 'jshint');
-  grunt.registerTask('test', 'jasmine:js');
-  grunt.registerTask('test:browser', ['jasmine:js:build', 'exec:open_spec_runner']);
   grunt.registerTask('dev', 'parallel:dev');
 
   // load tasks
@@ -230,5 +245,4 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-contrib-jshint');
   grunt.loadNpmTasks('grunt-contrib-concat');
   grunt.loadNpmTasks('grunt-contrib-connect');
-  grunt.loadNpmTasks('grunt-contrib-jasmine');
 };
